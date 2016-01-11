@@ -121,6 +121,7 @@ private:
 	WiFiClient client;
 	uint8_t buf[4096];
 	bool playing;
+	bool metaData;
 	unsigned int noplay;
 	unsigned int noplaycnt;
 	Ring rb;

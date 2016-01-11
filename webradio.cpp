@@ -62,8 +62,8 @@ void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
 	/* Switch on the analog parts */
 	WriteRegister(SCI_VOL,0xfefe); // VOL
 	WriteRegister(SCI_AUDATA,44101); // 44.1kHz stereo
-	WriteRegister(SCI_VOL,0x2020); // VOL
-	lastVol = 0x2020;
+	SetVolume(80);
+//	WriteRegister(SCI_VOL,0x2020); // VOL
 	// soft reset
 	WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
 	delay(1);
@@ -126,7 +126,9 @@ bool WebRadio::WiFiConnect(char* ssid, char* password)
 bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 {
 	char* pbuf;
+	char* pbuf2;
 	uint16_t n;
+	char tmp[256];
 	
 	if(client.connected())
 		client.stop();
@@ -140,8 +142,14 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 		return false;
 	}
   
-	client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + "\r\n" + "Icy-MetaData: 1\r\nConnection: close\r\n\r\n");
-  
+// OK with metadata:
+//	client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nConnection: close\r\n\r\n");
+// OK without metadata:
+//	client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Connection: close\r\n\r\n");
+
+	Serial.println(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+	client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+
 	Serial.println(client.status());
 	Serial.println(client.available());
   
@@ -151,18 +159,52 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 			yield(); 
 			if ((long)(millis()-next) > 0) {
 				Serial.println(">5s waiting for server reply");
+				Serial.println(client.available());
+				client.read(buf, client.available());
+				Serial.println((char*)buf);
 				return false;
 			}
 		}
 		client.read(buf, 2048);
 		Serial.println((char*)buf);
-		pbuf = strstr((char*)buf, "icy-metaint:") + 12;
-		ADTSBlockSize = atoi(pbuf);
-		Serial.println(ADTSBlockSize);
-		pbuf = strstr(pbuf, "\r\n\r\n") + 4;
-		n = 2048-(pbuf-(char*)buf);
-		ADTSMissingBytes = ADTSBlockSize - n;
-		Serial.println(ADTSMissingBytes);
+		
+		Serial.println("Station Information:");
+		pbuf = strstr((char*)buf, "icy-name:");
+		if (pbuf) {
+			pbuf2 = strstr((char*)pbuf, "\r\n");
+			strncpy(tmp, pbuf+9, pbuf2-pbuf-9);
+			tmp[pbuf2-pbuf-9] = 0;
+			Serial.println(tmp);
+		}
+		pbuf = strstr((char*)buf, "icy-genre:");
+		if (pbuf) {
+			pbuf2 = strstr((char*)pbuf, "\r\n");
+			strncpy(tmp, pbuf+10, pbuf2-pbuf-10);
+			tmp[pbuf2-pbuf-10] = 0;
+			Serial.println(tmp);
+		}
+		pbuf = strstr((char*)buf, "icy-url:");
+		if (pbuf) {
+			pbuf2 = strstr((char*)pbuf, "\r\n");
+			strncpy(tmp, pbuf+8, pbuf2-pbuf-8);
+			tmp[pbuf2-pbuf-8] = 0;
+			Serial.println(tmp);
+		}
+
+		pbuf = strstr((char*)buf, "icy-metaint:");
+		if(pbuf) {
+			Serial.println("Has metadata");
+			ADTSBlockSize = atoi(pbuf+12);
+			Serial.println(ADTSBlockSize);
+			pbuf = strstr(pbuf+12, "\r\n\r\n") + 4;
+			n = 2048-(pbuf-(char*)buf);
+			ADTSMissingBytes = ADTSBlockSize - n;
+			Serial.println(ADTSMissingBytes);
+			metaData = true;
+		} else {
+			Serial.println("No metadata");
+			metaData = false;
+		}
 //		SdiSendBuffer((uint8_t*)pbuf, n);
 		playing = false;
 		noplay = millis();
@@ -193,7 +235,7 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 	if(client.connected()) {
 		
 		n = client.available();
-		if(n>ADTSMissingBytes)
+		if(metaData && (n>ADTSMissingBytes))
 			n = ADTSMissingBytes;
 		if (n > 4096) 
 			n = 4096;
@@ -201,17 +243,21 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 		n = min(n, rb.Free());
 		if (n > 0) {
 			client.read(buf, n);
-			ADTSMissingBytes = ADTSMissingBytes - n;  
+			if(metaData)
+				ADTSMissingBytes = ADTSMissingBytes - n;  
 			if (rb.Write(buf, n) != n)
 				Serial.println("Error RB Write");
 		}			
 		// Fazer play a partir do buffer circular - ok
-		// Aumentar o buffer (não da mais de 32k e não parece ter vantagem sequer em ter os 32k), meter o playing a meio do buffer (start a 80%, stop a 10%, já está)
-		// Quando deixa de tocar por falta de dados, ao fim de pouco tempo deveria quebrar a ligação e forçar religar ao mesmo - testar
+		// Aumentar o buffer (não da mais de 32k e não parece ter vantagem sequer em ter os 32k), meter o playing a meio do buffer (start a 80%, stop a 0%, já está) - ok
+		// Quando deixa de tocar por falta de dados, ao fim de pouco tempo deveria quebrar a ligação e forçar religar ao mesmo - ok
 		// Verificar se faz sentido gastar cerca de 100ms a enviar 2048 bytes para o VS1053. Os mesmos 2048 bytes vão mais depressa se o bitrrate for 192 em vez de 128kbps
-		// Perceber a razão do vs1053 se 'desprogramar' de vez em quando - volume no max, etc. - e como resolver / contornar isso
-		// Na leitura do socket pode passar a ler o minimo dos bytes disponiveis / espaço disponivel no buffer (linhas 154 e seguintes) - testar
-		// A estação 2 faz crashar várias vezes com Exception 29, procesamento dos metadados? Colocar protecções nos rretornos do strcmp
+		// Perceber a razão do vs1053 se 'desprogramar' de vez em quando - volume no max, etc. - e como resolver / contornar isso - A alteração não resolveu completamente porque colocou o valor errado do volume, ver porquê
+		// Na leitura do socket pode passar a ler o minimo dos bytes disponiveis / espaço disponivel no buffer (linhas 154 e seguintes) - ok
+		// A estação 2 faz crashar várias vezes com Exception 29, procesamento dos metadados? Colocar protecções nos rretornos do strcmp - ok
+		// Compatibilizar entre icecast (ok), shoutcast, (outras?), por causa dos metadados - ok
+		// Testar com outras estações icecast, testar com estação shoutcast - ok
+		// Estações AAC parecem ter problemas com o VS1053, desprogramando-o, p.e. radio.Connect("192.152.23.242", "/", 8450); 
 		
 		int i = rb.Avail();
 //		Serial.print("D: "); Serial.print(i); Serial.print(" "); Serial.println(millis()-last); last = millis();
@@ -245,7 +291,7 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 			next = millis()+1000;
 		}
 			
-		if(ADTSMissingBytes == 0) {			
+		if(metaData && (ADTSMissingBytes == 0)) {			
 			ADTSMissingBytes = ADTSBlockSize;
 			// Metadata block, wait for the number of 16 byte blocks of metadata
 			now = millis();
@@ -390,7 +436,8 @@ void WebRadio::PrintDetails(void)
 		Serial.print(" 0x");
 		Serial.print(ReadRegister(i++), HEX);	  
 	}
-	Serial.println("");
+	Serial.print("Vol: "); 
+	Serial.println(lastVol);
 }
 
 // Ok: 0x800 0x48 0x0 0xB800 0x0 0x1F40 0x0 0x0 0x0 0x0 0x0 0x2020 0x0 0x0 0x0 0x0

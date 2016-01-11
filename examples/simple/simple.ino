@@ -16,6 +16,7 @@ void setup()
   Serial.println("WiFi Init...");
   radio.WiFiConnect("xpto-net", "");
   Serial.println("Radio connect...");
+//  radio.Connect("87.230.103.107", "/top100station.mp3", 80);
   radio.Connect("stream-uk1.radioparadise.com", "/mp3-128", 80);
 }
 
@@ -44,11 +45,21 @@ int ret;
     } else if(temp == 4) {
        radio.SetVolume(0);
     } else if(temp == 5) {
-       radio.SetVolume(70);
+       radio.Connect("stream-uk1.radioparadise.com", "/aac-128", 80);
     } else if(temp == 6) {
        radio.PrintDetails();
     } else if(temp == 7) {
        radio.PrintDebug();
+    } else if(temp == 8) {  
+       // Shoutcast GotRadio - Jazz So True
+       // radio.Connect("192.152.23.242", "/", 8450);    // AAC 64kbps, dá problemas com o VS1053...
+       radio.Connect("206.217.213.236", "/", 8450);   // MP3 128kbps, ok
+    } else if(temp == 9) {  
+//       radio.Connect("ruc1.cidadedecoimbra.com", "", 8000);
+       radio.Connect("87.230.103.107", "/top100station.mp3", 80);
+    } else if(temp == 10) {  
+       // Shoutcast
+       radio.Connect("streaming.radionomy.com", "/-BACO-LIBROS-Y-CAF--RADIO", 80);    
     } else if(temp > 20) {
        radio.SetVolume(temp);
     }
