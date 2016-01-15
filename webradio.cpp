@@ -55,23 +55,24 @@ void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
 	digitalWrite(_RST,HIGH);    //Mp3ReleaseFromReset();
 	delay(10);
 	// Declick: Immediately switch analog off
-	WriteRegister(SCI_VOL,0xffff); // VOL
+//	WriteRegister(SCI_VOL,0xffff); // VOL
 	/* Declick: Slow sample rate for slow analog part startup */
-	WriteRegister(SCI_AUDATA,10);
+//	WriteRegister(SCI_AUDATA,10);
 	delay(100);
 	/* Switch on the analog parts */
-	WriteRegister(SCI_VOL,0xfefe); // VOL
-	WriteRegister(SCI_AUDATA,44101); // 44.1kHz stereo
+//	WriteRegister(SCI_VOL,0xfefe); // VOL
+//	WriteRegister(SCI_AUDATA,44101); // 44.1kHz stereo
 	SetVolume(80);
-//	WriteRegister(SCI_VOL,0x2020); // VOL
 	// soft reset
 	WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
 	delay(1);
 	WaitForDREQ();
-	WriteRegister(SCI_CLOCKF,0xB800); // Experimenting with higher clock settings
+//	WriteRegister(SCI_CLOCKF,0xB800); // Experimenting with higher clock settings
+	WriteRegister(SCI_CLOCKF,0x6000); // Experimenting with higher clock settings
 	delay(1);
 	WaitForDREQ();
 	SPI.setClockDivider(SPI_CLOCK_DIV4); // Now you can set high speed SPI clock - Fastest available   
+	ApplyPatch(plugin, PLUGIN_SIZE);
 	
 	PrintDetails();
 	
@@ -105,7 +106,9 @@ void WebRadio::ReInit(void)
 	WriteRegister(SCI_CLOCKF,0xB800); // Experimenting with higher clock settings
 	delay(1);
 	WaitForDREQ();
-	SPI.setClockDivider(SPI_CLOCK_DIV4); // Now you can set high speed SPI clock - Fastest available   	
+	SPI.setClockDivider(SPI_CLOCK_DIV4); // Now you can set high speed SPI clock - Fastest available   
+	ApplyPatch(plugin, PLUGIN_SIZE);
+
 	PrintDetails();
 }
 
@@ -258,6 +261,7 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 		// Compatibilizar entre icecast (ok), shoutcast, (outras?), por causa dos metadados - ok
 		// Testar com outras estações icecast, testar com estação shoutcast - ok
 		// Estações AAC parecem ter problemas com o VS1053, desprogramando-o, p.e. radio.Connect("192.152.23.242", "/", 8450); 
+		// Nas comutações de estações deveria fazer um fade out até 0, esvaziar o buffer e conectar à nova, repondo o volume
 		
 		int i = rb.Avail();
 //		Serial.print("D: "); Serial.print(i); Serial.print(" "); Serial.println(millis()-last); last = millis();
@@ -352,6 +356,58 @@ void WebRadio::SetVolume(uint16_t vol)
 	vol |= vol << 8;
 	Serial.print("Vol: "); Serial.println(vol, HEX);
 	WriteRegister(SCI_VOL, vol);
+}
+
+void WebRadio::ApplyPatch(const uint16_t *patch, uint16_t patchsize) 
+{
+
+	uint16_t i = 0;
+
+	Serial.print("Patch size: "); Serial.println(patchsize);
+	while ( i < patchsize ) {
+		uint16_t addr, n, val;
+
+//		addr = pgm_read_word(patch++);
+		addr = *patch++;
+//		n = pgm_read_word(patch++);
+		n = *patch++;
+		i += 2;
+//		Serial.println(addr, HEX);
+		if (n & 0x8000U) { // RLE run, replicate n samples 
+			n &= 0x7FFF;
+//			val = pgm_read_word(patch++);
+			val = *patch++;
+			i++;
+			while (n--) {
+				WriteRegister(addr, val);
+			}      
+		} else {           // Copy run, copy n samples 
+			while (n--) {
+//				val = pgm_read_word(patch++);
+				val = *patch++;
+				i++;
+				WriteRegister(addr, val);
+			}
+		}
+	}
+}
+
+void WebRadio::AdjustRate(long ppm2) 
+{	
+	WriteRegister(SCI_WRAMADDR, 0x1e07);
+	WriteRegister(SCI_WRAM, ppm2);
+	WriteRegister(SCI_WRAM, ppm2 >> 16);
+	/* oldClock4KHz = 0 forces adjustment calculation when rate checked. */
+	WriteRegister(SCI_WRAMADDR, 0x5b1c);
+	WriteRegister(SCI_WRAM, 0);
+	/* Write to AUDATA or CLOCKF checks rate and recalculates adjustment. */
+	WriteRegister(SCI_AUDATA, ReadRegister(SCI_AUDATA));
+}
+
+
+void WebRadio::SetClock(uint16_t clock)
+{
+	WriteRegister(SCI_CLOCKF,0xB800 | clock);
 }
 
 void WebRadio::SdiSendBuffer(const uint8_t* data, size_t len)

@@ -1,10 +1,89 @@
 #include <ESP8266WiFi.h>
 #include <SPI.h>
+#include <Wire.h>
+#include <ArduinoJson.h>
+#include <FS.h>
 #include <webradio.h>
 
 WebRadio radio;
 char metaName[128];
 char metaURL[128];
+
+char configString[1024];
+
+bool readConfig()
+{
+
+  // Delete file (for testing only):
+//  SPIFFS.remove("/cl_conf.txt");
+  
+  // open file for reading.
+  File configFile = SPIFFS.open("/cl_conf.txt", "r");
+  if (!configFile) {
+    Serial.println("Failed to open cl_conf.txt.");
+    configFile = SPIFFS.open("/cl_conf.txt", "w");
+    if (!configFile) {
+      Serial.println("Failed to open cl_conf.txt for writing");
+      return false;
+    }
+    // Init config file:
+    StaticJsonBuffer<200> jsonBuffer;
+
+/*
+    JsonObject& root = jsonBuffer.createObject();
+    root["sensor"] = "gps";
+    root["time"] = 1351824120;
+    JsonArray& data = root.createNestedArray("s");
+    data.add("stream-uk1.radioparadise.com");
+    data.add("/mp3-128");
+    data.add(80);
+*/
+
+    JsonObject& root = jsonBuffer.createObject();
+    root["nradios"] = 1;
+    JsonArray& stations = root.createNestedArray("stations");
+    {
+      JsonObject& station = stations.createNestedObject();
+      station["name"] = "Paradise";
+      station["addr"] = "stream-uk1.radioparadise.com";
+      station["url"] = "/mp3-128";
+      station["port"] = 80;
+    }
+    {
+      JsonObject& station = stations.createNestedObject();
+//      station = stations.createNestedObject();
+      station["name"] = "Xpto";
+      station["addr"] = "87.230.103.107";
+      station["url"] = "/top100station.mp3";
+      station["port"] = 80;
+    }
+    
+    root.printTo(configString, sizeof(configString));
+//    strcpy(configString, "bla bla");
+    configFile.write((uint8_t*)configString, strlen(configString));
+    configFile.close();
+    configFile = SPIFFS.open("/cl_conf.txt", "r");
+    if (!configFile) {
+      Serial.println("Failed again to open cl_conf.txt");
+      return false;
+    }
+  }
+  // Read config file
+  configFile.readBytes(configString, configFile.size());
+  Serial.println("ConfigFile: ");
+  Serial.println(configString);
+
+  {
+    StaticJsonBuffer<200> jsonBuffer;
+    JsonObject& root = jsonBuffer.parseObject(configString);
+    JsonArray& stations = root["stations"];
+    Serial.println((int)root["nstations"]);
+    Serial.println((const char*)stations[0]["name"]);
+    Serial.println((const char*)stations[1]["name"]);
+  }
+  return true;
+}
+
 
 void setup()
 {
@@ -12,12 +91,32 @@ void setup()
   Serial.begin(115200); // Start Serial 
   Serial.setTimeout(5);
   Serial.println("HW Init...");
-  radio.Init(0, 15, 4, 5);
+  radio.Init(16, 15, 4, 5);
+
+
+  // Initialize file system.
+  if (!SPIFFS.begin()) {
+    Serial.println("Failed to mount file system");
+    return;
+  }
+  readConfig();
+
   Serial.println("WiFi Init...");
   radio.WiFiConnect("xpto-net", "");
   Serial.println("Radio connect...");
 //  radio.Connect("87.230.103.107", "/top100station.mp3", 80);
   radio.Connect("stream-uk1.radioparadise.com", "/mp3-128", 80);
+
+
+  Wire.pins(0, 2);
+  Wire.begin();
+  StartUp_OLED(); // Init Oled and fire up!
+  Serial.println("OLED Init...");
+  clear_display();
+  sendStrXY(" DANBICKS WIFI ", 0, 1); // 16 Character max per line with font set
+  sendStrXY("   SCANNER     ", 2, 1);
+  sendStrXY("START-UP ....  ", 4, 1);
+
 }
 
 void loop()
@@ -52,14 +151,22 @@ int ret;
        radio.PrintDebug();
     } else if(temp == 8) {  
        // Shoutcast GotRadio - Jazz So True
-       // radio.Connect("192.152.23.242", "/", 8450);    // AAC 64kbps, dá problemas com o VS1053...
-       radio.Connect("206.217.213.236", "/", 8450);   // MP3 128kbps, ok
+       radio.Connect("192.152.23.242", "/", 8450);    // AAC 64kbps, d? problemas com o VS1053...
+       // radio.Connect("206.217.213.236", "/", 8450);   // MP3 128kbps, ok
     } else if(temp == 9) {  
 //       radio.Connect("ruc1.cidadedecoimbra.com", "", 8000);
        radio.Connect("87.230.103.107", "/top100station.mp3", 80);
     } else if(temp == 10) {  
        // Shoutcast
        radio.Connect("streaming.radionomy.com", "/-BACO-LIBROS-Y-CAF--RADIO", 80);    
+    } else if(temp == 17) {  
+       radio.AdjustRate(-187000);
+    } else if(temp == 18) {  
+       radio.AdjustRate(511999);
+//       radio.SetClock(100);
+    } else if(temp == 19) {  
+       radio.AdjustRate(0);
+//       radio.SetClock(0);
     } else if(temp > 20) {
        radio.SetVolume(temp);
     }
