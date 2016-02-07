@@ -4,12 +4,17 @@
 #include <ArduinoJson.h>
 #include <FS.h>
 #include <webradio.h>
+#include <SparkFun_MMA8452Q.h>
 
 WebRadio radio;
 char metaName[128];
 char metaURL[128];
 
 char configString[1024];
+
+
+MMA8452Q accel;
+
 
 bool readConfig()
 {
@@ -117,6 +122,9 @@ void setup()
   sendStrXY("   SCANNER     ", 2, 1);
   sendStrXY("START-UP ....  ", 4, 1);
 
+//  accel.init();
+    accel.init(SCALE_8G, ODR_200);
+//  accel.setupTap(0x08, 0x08, 0x08);
 }
 
 void loop()
@@ -171,4 +179,79 @@ int ret;
        radio.SetVolume(temp);
     }
   }
+  int x = accel.readTap();
+
+  if (x&0x10) {
+    if (x&0x8)
+      Serial.print("    Double Tap (2) on X");  // tabbing here for visibility 
+    else 
+      Serial.print("Single (1) tap on X"); 
+    if (x & 0x01)  { // If PoIX is set 
+      Serial.println(" -"); 
+    } else { 
+      Serial.println(" +"); 
+    } 
+  }
+  if (x&0x20) {
+    if (x&0x8)
+      Serial.print("    Double Tap (2) on Y");  // tabbing here for visibility 
+    else 
+      Serial.print("Single (1) tap on Y"); 
+    if (x & 0x02)  { // If PoIX is set 
+      Serial.println(" -"); 
+    } else { 
+      Serial.println(" +"); 
+    } 
+  }
+  if (x&0x40) {
+    if (x&0x8)
+      Serial.print("    Double Tap (2) on Z");  // tabbing here for visibility 
+    else 
+      Serial.print("Single (1) tap on Z"); 
+    if (x & 0x04)  { // If PoIX is set 
+      Serial.println(" -"); 
+    } else { 
+      Serial.println(" +"); 
+    } 
+  }
+   
+/*     
+   if ((x & 0x10)==0x10)  // If AxX bit is set 
+   { 
+     if ((x & 0x08)==0x08)  // If DPE (double puls) bit is set 
+       Serial.print("    Double Tap (2) on X");  // tabbing here for visibility 
+     else 
+       Serial.print("Single (1) tap on X"); 
+
+     if ((x & 0x01)==0x01)  { // If PoIX is set 
+       Serial.println(" -"); 
+     } else { 
+       Serial.println(" +"); 
+     } 
+   } 
+   if ((x & 0x20)==0x20)  // If AxY bit is set 
+   { 
+     if ((x & 0x08)==0x08)  // If DPE (double pulse) bit is set 
+       Serial.print("    Double Tap (2) on Y"); 
+     else 
+       Serial.print("Single (1) tap on Y"); 
+ 
+     if ((x & 0x02)==0x02) { // If PoIY is set 
+       Serial.println(" -"); 
+     } else { 
+       Serial.println(" +"); 
+     } 
+   } 
+   if ((x & 0x40)==0x40)  // If AxZ bit is set 
+   { 
+     if ((x & 0x08)==0x08)  // If DPE (double puls) bit is set 
+       Serial.print("    Double Tap (2) on Z"); 
+     else 
+       Serial.print("Single (1) tap on Z"); 
+     if ((x & 0x04)==0x04) { // If PoIZ is set 
+       Serial.println(" -");  
+     } else { 
+       Serial.println(" +"); 
+   } 
+*/
 }

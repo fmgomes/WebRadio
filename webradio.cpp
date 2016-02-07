@@ -37,22 +37,28 @@ void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
     pinMode(13, FUNCTION_2); //MOSI
     pinMode(14, FUNCTION_2); //SCLK     
     SPI.begin();   // Start SPI
-	pinMode(_RST,OUTPUT);  
-	digitalWrite(_RST,LOW);
+	if(_RST!=0xFF) {
+		pinMode(_RST,OUTPUT);  
+		digitalWrite(_RST,LOW);
+	}
 	// The SCI and SDI will start deselected
 //*	pinMode(_RST,OUTPUT);     
 //*	digitalWrite(_RST,HIGH);
 	pinMode(_CS,OUTPUT);    
 	digitalWrite(_CS,HIGH);
-	pinMode(_DCS,OUTPUT);    
-	digitalWrite(_DCS,HIGH);
+	if(_DCS!=0xFF) {
+		pinMode(_DCS,OUTPUT);    
+		digitalWrite(_DCS,HIGH);		
+	}
 	pinMode(_DREQ,INPUT);   // DREQ is an input
 	
     Serial.println("Booting VS1053...");   // Boot VS1053D
 	delay(10);
 	
 	SPI.setClockDivider(SPI_CLOCK_DIV64); // Slow!
-	digitalWrite(_RST,HIGH);    //Mp3ReleaseFromReset();
+	if(_RST!=0xFF) {
+		digitalWrite(_RST,HIGH);    //Mp3ReleaseFromReset();
+	}
 	delay(10);
 	// Declick: Immediately switch analog off
 //	WriteRegister(SCI_VOL,0xffff); // VOL
@@ -64,7 +70,10 @@ void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
 //	WriteRegister(SCI_AUDATA,44101); // 44.1kHz stereo
 	SetVolume(80);
 	// soft reset
-	WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
+	if(_DCS!=0xFF)
+		WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
+	else
+		WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET) | _BV(SM_SDISHARE));
 	delay(1);
 	WaitForDREQ();
 //	WriteRegister(SCI_CLOCKF,0xB800); // Experimenting with higher clock settings
@@ -84,10 +93,12 @@ void WebRadio::ReInit(void)
 {
 
     Serial.println("Rebooting VS1053...");  	
-	digitalWrite(_RST,LOW);
-	delay(10);
 	SPI.setClockDivider(SPI_CLOCK_DIV64); // Slow!
-	digitalWrite(_RST,HIGH);    //Mp3ReleaseFromReset();
+	if(_RST!=0xFF) {
+		digitalWrite(_RST,LOW);
+		delay(10);
+		digitalWrite(_RST,HIGH);    //Mp3ReleaseFromReset();
+	}
 	delay(10);
 	// Declick: Immediately switch analog off
 	WriteRegister(SCI_VOL,0xffff); // VOL
@@ -100,7 +111,10 @@ void WebRadio::ReInit(void)
 	SetVolume(lastVol);
 //	WriteRegister(SCI_VOL,); // VOL
 	// soft reset
-	WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
+	if(_DCS!=0xFF)
+		WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
+	else
+		WriteRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET) | _BV(SM_SDISHARE));
 	delay(1);
 	WaitForDREQ();
 	WriteRegister(SCI_CLOCKF,0xB800); // Experimenting with higher clock settings
@@ -429,12 +443,14 @@ void WebRadio::SdiSendBuffer(const uint8_t* data, size_t len)
 void WebRadio::DataModeOn(void) 
 {
     digitalWrite(_CS, HIGH);
-    digitalWrite(_DCS, LOW);
+	if(_DCS!=0xFF)
+		digitalWrite(_DCS, LOW);
 }
 
 void WebRadio::DataModeOff(void)
 {
-    digitalWrite(_DCS, HIGH);
+	if(_DCS!=0xFF)
+		digitalWrite(_DCS, HIGH);
 }  
 
 void WebRadio::WaitForDREQ(void) 
@@ -447,7 +463,8 @@ void WebRadio::WaitForDREQ(void)
 
 void WebRadio::ControlModeOn(void) 
 {
-    digitalWrite(_DCS, HIGH);
+	if(_DCS!=0xFF)
+		digitalWrite(_DCS, HIGH);
     digitalWrite(_CS, LOW);
 }
 void WebRadio::ControlModeOff(void) 
@@ -482,6 +499,16 @@ uint16_t WebRadio::ReadRegister(uint8_t _reg)
   ControlModeOff();
   return result;
 }
+
+void WebRadio::ChangeModeMIDItoMP3()
+{
+	// Esses 4 linhas torna bordo para ser executado no modo de MP3, sem solda necessária mais 
+	WriteRegister (SCI_WRAMADDR, 0xc017); 	// Endereço de GPIO_DDR é 0xC017 
+	WriteRegister (SCI_WRAM, 0x0003); 		// = 3 GPIO_DDR 
+	WriteRegister (SCI_WRAMADDR, 0xc019); 	// Endereço de GPIO_ODATA é 0xC019 
+	WriteRegister (SCI_WRAM, 0x0000); 		// 0 = GPIO_ODATA	
+}
+
 
 void WebRadio::PrintDetails(void) 
 {

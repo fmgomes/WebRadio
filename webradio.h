@@ -140,6 +140,7 @@ private:
 // 	void PrintDetails(void);
 	uint16_t ReadRegister(uint8_t _reg);
 	void ReInit(void);
+	void ChangeModeMIDItoMP3();
 	
 
 public:
