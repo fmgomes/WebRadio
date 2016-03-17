@@ -150,13 +150,14 @@ public:
 	bool Connect(char* myHost, char* myUrl, uint16_t myPort);
 	int Loop(char* metaName, char* metaURL);
 	void SetVolume(uint16_t vol);
+	uint16_t GetVolume();
 	void PrintDetails(void);
 	void PrintDebug(void);
 	bool Reconnect(void);
 	void SetClock(uint16_t clock);
 	void ApplyPatch(const uint16_t *patch, uint16_t patchsize);
 	void AdjustRate(long ppm2);
-
+	bool PlayFile(char* fileName);
 	
 };
 

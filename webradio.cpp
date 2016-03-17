@@ -23,6 +23,7 @@
 #include "ESP8266WiFi.h"
 #include "WiFiClient.h"
 #include "SPI.h"
+#include "FS.h"
 #include "webradio.h"
 
 void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
@@ -370,6 +371,35 @@ void WebRadio::SetVolume(uint16_t vol)
 	vol |= vol << 8;
 	Serial.print("Vol: "); Serial.println(vol, HEX);
 	WriteRegister(SCI_VOL, vol);
+}
+
+uint16_t WebRadio::GetVolume()
+{
+	return(lastVol);	
+}
+
+bool WebRadio::PlayFile(char* fileName)
+{
+	uint8_t buf[1024];
+	uint16_t n, i;
+	
+	File localFile = SPIFFS.open(fileName, "r");
+	if (!localFile)
+		return false;
+	
+	n = localFile.size();
+	while (n) {
+		if (n > 1024) {
+			i = 1024;
+			n = n-1024;
+		} else {
+			i = n;
+			n = 0;
+		}
+		localFile.readBytes((char*)buf, i);
+		SdiSendBuffer(buf, i);
+	}
+	return true;
 }
 
 void WebRadio::ApplyPatch(const uint16_t *patch, uint16_t patchsize) 
