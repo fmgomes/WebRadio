@@ -148,6 +148,9 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 	uint16_t n;
 	char tmp[256];
 	
+	fileSize = -1;
+	filePos = 0;
+				
 	if(client.connected())
 		client.stop();
 	
@@ -222,6 +225,44 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 		} else {
 			Serial.println("No metadata");
 			metaData = false;
+			pbuf = strstr((char*)buf, "Content-Length:");
+			if(pbuf) {
+				fileSize = atol(pbuf+16);
+				filePos = 0;
+//				Serial.println(pbuf);
+			} 
+			pbuf = strstr((char*)buf, "ID3");
+			if(pbuf) {
+				Serial.println("ID3v2");
+				uint32_t mp3Offset;
+				mp3Offset = ((uint32_t)(*(pbuf+9))); 
+				mp3Offset += ((uint32_t)(*(pbuf+8)))<<7;
+				mp3Offset += ((uint32_t)(*(pbuf+7)))<<14;
+				mp3Offset += ((uint32_t)(*(pbuf+6)))<<21;
+				mp3Offset += 10;
+				Serial.println(mp3Offset);
+				client.stop();
+				if (!client.connect(myHost, myPort)) {
+					Serial.println("connection failed");
+					return false;
+				}
+				client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=" + mp3Offset + "-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+				Serial.println(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=" + mp3Offset + "-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+				if(client.connected()){    
+					unsigned long next = millis() + 5000;
+					while(client.available()<2048) {
+						yield(); 
+						if ((long)(millis()-next) > 0) {
+							Serial.println(">5s waiting for server reply");
+							Serial.println(client.available());
+							client.read(buf, client.available());
+							Serial.println((char*)buf);
+							return false;
+						}
+					}
+				}
+				filePos = mp3Offset;
+			}
 		}
 //		SdiSendBuffer((uint8_t*)pbuf, n);
 		playing = false;
@@ -253,6 +294,7 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 	if(client.connected()) {
 		
 		n = client.available();
+				
 		if(metaData && (n>ADTSMissingBytes))
 			n = ADTSMissingBytes;
 		if (n > 4096) 
@@ -260,7 +302,9 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 
 		n = min(n, rb.Free());
 		if (n > 0) {
+//			Serial.println(n);
 			client.read(buf, n);
+			filePos += n;
 			if(metaData)
 				ADTSMissingBytes = ADTSMissingBytes - n;  
 			if (rb.Write(buf, n) != n)
@@ -280,12 +324,15 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 		
 		int i = rb.Avail();
 //		Serial.print("D: "); Serial.print(i); Serial.print(" "); Serial.println(millis()-last); last = millis();
-		if ((i>RBHIGH) && !playing)
+		if ((i>RBHIGH) && !playing) {
 			playing = true;
+//			Serial.println("Playing true");
+		}
 		if ((i<=RBLOW) && playing) {
 			playing = false;
 			noplay = millis();
 			noplaycnt++;
+//			Serial.println("Playing false");
 		}
 		if (playing) {
 			if(i>2048)
@@ -293,6 +340,7 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 			if (rb.Read(buf, i) != i)
 				Serial.println("Error RB Read");
 			SdiSendBuffer(buf, i);
+//			Serial.println(i);
 		} else {
 			if ((millis() - noplay) > 2000) {
 				Serial.println(">2s without playing");
@@ -382,7 +430,12 @@ bool WebRadio::PlayFile(char* fileName)
 {
 	uint8_t buf[1024];
 	uint16_t n, i;
-	
+/*
+	SdiSendZeros(2052);
+	uint16_t mode = ReadRegister(SCI_MODE);
+	WriteRegister(SCI_MODE, mode | _BV(SM_OUTOFWAV));
+	SdiSendZeros(2052);
+*/	
 	File localFile = SPIFFS.open(fileName, "r");
 	if (!localFile)
 		return false;
@@ -399,6 +452,9 @@ bool WebRadio::PlayFile(char* fileName)
 		localFile.readBytes((char*)buf, i);
 		SdiSendBuffer(buf, i);
 	}
+
+//	SdiSendZeros(2048);
+
 	return true;
 }
 
@@ -468,6 +524,21 @@ void WebRadio::SdiSendBuffer(const uint8_t* data, size_t len)
 	}
 	DataModeOff();
 //  Serial.println("sdi sb end");
+}
+
+void WebRadio::SdiSendZeros(size_t len)
+{
+	DataModeOn();
+	while ( len ) {
+		//Serial.println("await_data_request");
+		WaitForDREQ();
+		delayMicroseconds(3);
+		size_t chunk_length = min(len, VS1053_CHUNK_SIZE);
+		len -= chunk_length;
+		while ( chunk_length-- )
+			SPI.transfer(0);
+	}
+	DataModeOff();
 }
 
 void WebRadio::DataModeOn(void) 

@@ -133,6 +133,7 @@ private:
 	void DataModeOn(void);
 	void DataModeOff(void);
 	void SdiSendBuffer(const uint8_t* data, size_t len);
+	void SdiSendZeros(size_t len);
 	void WaitForDREQ(void);
 	void WriteRegister(uint8_t _reg, uint16_t _value);
 	void ControlModeOn(void);
@@ -158,6 +159,8 @@ public:
 	void ApplyPatch(const uint16_t *patch, uint16_t patchsize);
 	void AdjustRate(long ppm2);
 	bool PlayFile(char* fileName);
+	int32_t fileSize;
+	int32_t filePos;
 	
 };
 
