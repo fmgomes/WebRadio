@@ -92,9 +92,10 @@ typedef struct ringbuffer {
 class Ring
 {
 private:
-	ringbuffer rbuf;
 
 public:
+	ringbuffer rbuf;
+
 	int Init(int size);
 	void Clear(void);
 	void Destroy();

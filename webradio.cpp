@@ -86,8 +86,11 @@ void WebRadio::Init (char CS, char DCS, char DREQ, char RST)
 	
 	PrintDetails();
 	
+/*	From now on made dinamically on the connect methode if not done previously
 	if (rb.Init(RBSIZE)==-1)
 		Serial.printf("No memory for rb");
+*/
+
 }
 
 void WebRadio::ReInit(void) 
@@ -147,6 +150,12 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 	char* pbuf2;
 	uint16_t n;
 	char tmp[256];
+	
+	// Test if the ringbufer was already created
+	if(rb.rbuf.buffer == 0) {
+		if (rb.Init(RBSIZE)==-1)
+			Serial.printf("No memory for rb");		
+	}
 	
 	fileSize = -1;
 	filePos = 0;
