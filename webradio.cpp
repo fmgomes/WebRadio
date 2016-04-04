@@ -184,6 +184,68 @@ bool WebRadio::Connect(char* myHost, char* myUrl, uint16_t myPort)
 	Serial.println(client.available());
   
 	if(client.connected()){    
+		
+		int code;
+		int port;
+		
+		// Loop to process HTTP redirections
+		// Some protection should be added for infinite redirections or loop redirections.
+		do {
+			String req = client.readStringUntil('\n');
+			req.trim();
+			int start = req.indexOf(' ');
+			int end = req.indexOf(' ', start+1);
+			if(start==-1 || end==-1) {
+				Serial.println("Invalid reply");
+				return false;
+			}
+			code = req.substring(start+1, end).toInt();
+			Serial.print("HTTP Reply code: ");Serial.println(code);
+			if (code == 302) {
+				// Processing redirection
+				do {
+					req = client.readStringUntil('\n');
+					req.trim();
+					if (req.startsWith("Location: ")) {
+						// New location
+						Serial.println(req);
+						req.remove(0, 10);
+						int index = req.indexOf(':');
+						req.remove(0, index+3);
+						index = req.indexOf('/');
+						String host = req.substring(0, index);
+						req.remove(0, index);
+						index = host.indexOf(':');
+						if (index == -1) {
+							port = 80;							
+						} else {
+							port = host.substring(index+1, host.length()).toInt();
+							host.remove(index);
+						}
+						myPort = port;
+						strcpy(myHost, host.c_str());
+						strcpy(myUrl, req.c_str());
+						Serial.println(myHost);
+						Serial.println(myUrl);
+						Serial.println(myPort);
+						client.stop();
+						if (!client.connect(host.c_str(), port)) {
+							Serial.println("connection failed");
+							return false;
+						}
+						Serial.println(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+						client.print(String("GET ") + myUrl + " HTTP/1.1\r\n" + "Host: " + myHost + ":" + myPort + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+//						Serial.println(String("GET ") + req + " HTTP/1.1\r\n" + "Host: " + host + ":" + port + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+//						client.print(String("GET ") + req + " HTTP/1.1\r\n" + "Host: " + host + ":" + port + "\r\n" + "Icy-MetaData: 1\r\nRange: bytes=0-\r\nUser-Agent: VLC/2.2.1 LibVLC/2.2.1\r\nConnection: close\r\n\r\n");
+						break;
+					} else if (req == "") {
+						// End of header
+						return(false);
+					}				
+				} while (req != "");
+			}
+		} while (code == 302);
+		
 		unsigned long next = millis() + 5000;
 		while(client.available()<2048) {
 			yield(); 
@@ -422,11 +484,14 @@ int WebRadio::Loop(char* metaName, char* metaURL)
 
 void WebRadio::SetVolume(uint16_t vol)
 {
-	
+	if(vol>100) {
+		Serial.print("\nVol error: "); Serial.println(vol);
+		vol=80;		
+	}
+	Serial.print("\nVol: "); Serial.println(vol);
 	lastVol = vol;	
 	vol = 0xFE * (100-vol) / 100;
 	vol |= vol << 8;
-	Serial.print("Vol: "); Serial.println(vol, HEX);
 	WriteRegister(SCI_VOL, vol);
 }
 

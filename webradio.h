@@ -127,7 +127,7 @@ private:
 	unsigned int noplaycnt;
 	Ring rb;
 	char lastHost[64];
-	char lastUrl[64];
+	char lastUrl[256];
 	uint16_t lastPort;
 	uint16_t lastVol;
 	
